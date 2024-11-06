@@ -13,13 +13,15 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='carter',
+    maintainer='Carter Sifferman',
     maintainer_email='cpsiff@gmail.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    description='Package for interfacing with miniature ToF sensors',
+    license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'tof_publisher = mini_tof.tof_publisher:main',
+            'tof_visualizer = mini_tof.tof_visualizer:main',
         ],
     },
 )

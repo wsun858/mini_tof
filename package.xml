@@ -4,7 +4,7 @@
   <name>mini_tof</name>
   <version>0.0.0</version>
   <description>Package for interfacing with miniature ToF sensors</description>
-  <maintainer email="sifferman@wisc.edu">Carter Sifferman</maintainer>
+  <maintainer email="cpsiff@gmail.com">Carter Sifferman</maintainer>
   <license>MIT</license>
 
   <test_depend>ament_copyright</test_depend>
