@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
 
-from mini_tof_interfaces.msg import TMF882XMeasure
+from mini_tof_interfaces.msg import ToFFrame
 
 class TMF882XVis(Node):
     def __init__(self):
@@ -22,7 +22,7 @@ class TMF882XVis(Node):
         # *through* the sensor lines up with what's plotted.
         self.ZONE_ORDER = [2, 1, 0, 5, 4, 3, 8, 7, 6] # bottom row is 8, 7, 6
 
-        self.subscriber = self.create_subscription(TMF882XMeasure, 'tmf882x', self.sub_callback, 1)
+        self.subscriber = self.create_subscription(ToFFrame, 'tmf882x', self.sub_callback, 1)
 
         self.hist_fig, self.hist_ax = plt.subplots(3, 3)
         self.hist_fig.set_size_inches(10, 10)
@@ -48,7 +48,7 @@ class TMF882XVis(Node):
         plt.show(block=False)
 
     def sub_callback(self, msg):
-        hists = np.array(msg.hists).reshape(9, 128)
+        hists = np.array([msg.histograms[i].histogram for i in range(9)])
         max_val = np.max(hists)
 
         argmaxes = np.argmax(hists, axis=1)

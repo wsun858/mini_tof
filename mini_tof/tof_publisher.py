@@ -4,7 +4,7 @@ from rclpy.node import Node
 import serial
 import numpy as np
 
-from mini_tof_interfaces.msg import TMF882XMeasure
+from mini_tof_interfaces.msg import ToFHistogram, ToFFrame
 
 class TMF882XPub(Node):
     def __init__(self):
@@ -31,7 +31,7 @@ class TMF882XPub(Node):
 
         self.get_logger().info(f"Arduino port: {self.arduino.name}, baudrate: {self.arduino.baudrate}")
 
-        self.publisher = self.create_publisher(TMF882XMeasure, 'tmf882x', 1)
+        self.publisher = self.create_publisher(ToFFrame, 'tmf882x', 1)
 
         self.timer = self.create_timer(0.005, self.timer_callback)
 
@@ -47,9 +47,7 @@ class TMF882XPub(Node):
             self.get_logger().info("Received data from Arduino")
             self.received_data = True
 
-        message = TMF882XMeasure()
-        message.num_zones = self.TMF882X_CHANNELS-1 # -1 because ignore reference hist
-        message.num_bins = self.TMF882X_BINS
+        message = ToFFrame()
         message.i2c_address = dists[0]["I2C_address"]
         message.tick = dists[0]["tick"]
         message.num_valid_results = dists[0]["num_valid_results"]
@@ -62,8 +60,14 @@ class TMF882XPub(Node):
         message.histogram_type = histogram_type
         message.port = self.arduino_port
         if hists[0]: # if hists is not an empty list (histograms are being reported)
-            message.hists = np.array(hists[0][1:]).flatten().tolist()
-            message.reference_hist = hists[0][0]
+            message.histograms = [
+                ToFHistogram(
+                    histogram=hist
+                ) for hist in hists[0][1:]
+            ]
+            message.reference_histogram = ToFHistogram(
+                histogram=hists[0][0]
+            )
         
         self.publisher.publish(message)
 
