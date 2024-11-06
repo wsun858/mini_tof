@@ -4,7 +4,7 @@ from rclpy.node import Node
 import serial
 import numpy as np
 
-from mini_tof_interfaces.msg import ToFHistogram, ToFFrame
+from mini_tof_interfaces.msg import ToFHistogram, ToFFrame, DepthEstimate
 
 class TMF882XPub(Node):
     def __init__(self):
@@ -53,12 +53,18 @@ class TMF882XPub(Node):
         message.num_valid_results = dists[0]["num_valid_results"]
         message.temperature = dists[0]["temperature"]
         message.measurement_num = dists[0]["measurement_num"]
-        message.depths_1 = dists[0]["depths_1"]
-        message.confs_1 = dists[0]["confs_1"]
-        message.depths_2 = dists[0]["depths_2"]
-        message.confs_2 = dists[0]["confs_2"]
+        message.depth_estimates = [
+            DepthEstimate(
+                depth_estimates = dists[0]["depths_1"],
+                confidences = dists[0]["confs_1"]
+            ),
+            DepthEstimate(
+                depth_estimates = dists[0]["depths_2"],
+                confidences = dists[0]["confs_2"]
+            )
+        ]
         message.histogram_type = histogram_type
-        message.port = self.arduino_port
+        message.serial_port = self.arduino_port
         if hists[0]: # if hists is not an empty list (histograms are being reported)
             message.histograms = [
                 ToFHistogram(

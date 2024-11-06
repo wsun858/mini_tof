@@ -74,7 +74,7 @@ class TMF882XVis(Node):
 
                 self.display_distances(
                     self.dist_ax[row][col],
-                    msg.depths_1[self.ZONE_ORDER[hist_idx]],
+                    msg.depth_estimates[0].depth_estimates[self.ZONE_ORDER[hist_idx]],
                     max_dist=1600
                 )
 
