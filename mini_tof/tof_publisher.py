@@ -16,29 +16,26 @@ import rclpy
 from rclpy.node import Node
 from readers.tmf8820_reader import TMF8820Reader
 
-import serial
-import numpy as np
-
 from mini_tof_interfaces.msg import ToFHistogram, ToFFrame, DepthEstimate
+
 
 class ToFPublisher(Node):
     def __init__(self):
-        super().__init__('tof_publisher')
+        super().__init__("tof_publisher")
 
         # ROS parameter for the Arduino port. Defaults to /dev/ttyACM0
-        self.declare_parameter('mcu_port', rclpy.Parameter.Type.STRING)
+        self.declare_parameter("mcu_port", rclpy.Parameter.Type.STRING)
 
-        try: 
-            self.mcu_port = self.get_parameter('mcu_port').value
+        try:
+            self.mcu_port = self.get_parameter("mcu_port").value
             self.get_logger().info(f"Using provided Arduino port {self.mcu_port}")
         except:
             self.mcu_port = "/dev/ttyACM0"
             self.get_logger().info(f"No Arduino port provided, using default {self.mcu_port}")
 
-
         self.reader = TMF8820Reader(self.mcu_port)
 
-        self.publisher = self.create_publisher(ToFFrame, 'mini_tof_data', 1)
+        self.publisher = self.create_publisher(ToFFrame, "mini_tof_data", 1)
 
         self.timer = self.create_timer(0.005, self.timer_callback)
 
@@ -60,30 +57,16 @@ class ToFPublisher(Node):
         message.temperature = dists[0]["temperature"]
         message.measurement_num = dists[0]["measurement_num"]
         message.depth_estimates = [
-            DepthEstimate(
-                depth_estimates = dists[0]["depths_1"],
-                confidences = dists[0]["confs_1"]
-            ),
-            DepthEstimate(
-                depth_estimates = dists[0]["depths_2"],
-                confidences = dists[0]["confs_2"]
-            )
+            DepthEstimate(depth_estimates=dists[0]["depths_1"], confidences=dists[0]["confs_1"]),
+            DepthEstimate(depth_estimates=dists[0]["depths_2"], confidences=dists[0]["confs_2"]),
         ]
         message.serial_port = self.mcu_port
-        if hists[0]: # if hists is not an empty list (histograms are being reported)
-            message.histograms = [
-                ToFHistogram(
-                    histogram=hist
-                ) for hist in hists[0][1:]
-            ]
-            message.reference_histogram = ToFHistogram(
-                histogram=hists[0][0]
-            )
-        
+        if hists[0]:  # if hists is not an empty list (histograms are being reported)
+            message.histograms = [ToFHistogram(histogram=hist) for hist in hists[0][1:]]
+            message.reference_histogram = ToFHistogram(histogram=hists[0][0])
+
         self.publisher.publish(message)
 
-        
-        
 
 def main(args=None):
     rclpy.init(args=args)
@@ -93,5 +76,6 @@ def main(args=None):
     tmf882x_pub.destroy_node()
     rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
