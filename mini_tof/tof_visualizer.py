@@ -1,10 +1,15 @@
-import time
+"""
+This ROS 2 node visualizes ToF sensor data in real-time. The tof_publisher node must be running
+for this node to receive data.
 
-import matplotlib.pyplot as plt
+ROS 2 subscriptions:
+- mini_tof_data: Reads ToFFrame messages and live plots data.
+"""
+
 import numpy as np
 import pyqtgraph as pg
 import rclpy
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtWidgets
 from PyQt6.QtWidgets import QMainWindow
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
@@ -17,10 +22,9 @@ class ToFVisualizerNode(Node, QMainWindow):
     This class needs to inherit from both Node and QtWidgets.QMainWindow, so it can have the update
     loops for both. See example: https://stackoverflow.com/a/78539454/8841061
 
-    I'm not sure exactly why, but the order of Node, QMainWindow in the above line matters. Maybe
-    this has to do with NRO (https://stackoverflow.com/q/3277367/8841061).
+    The order of Node, QMainWindow in the above line matters. Maybe this has to do with NRO
+    (https://stackoverflow.com/q/3277367/8841061).
     """
-
     def __init__(self):
         QMainWindow.__init__(self)
         Node.__init__(self, "tof_visualizer_node")
@@ -42,7 +46,7 @@ class ToFVisualizerNode(Node, QMainWindow):
         ]  # bottom row in view is idx 8, 7, 6 from sensor
         # fmt: on
 
-        self.subscriber = self.create_subscription(ToFFrame, "tmf882x", self.sub_callback, 1)
+        self.subscriber = self.create_subscription(ToFFrame, "mini_tof_data", self.sub_callback, 1)
 
         self.num_zones = 9
 
@@ -84,8 +88,10 @@ class ToFVisualizerNode(Node, QMainWindow):
         self.grid_layout.setColumnStretch(grid_size, 3)  # Make the image column wider
 
     def sub_callback(self, msg):
+        """
+        Update plot with new sensor data.
+        """
         hists = np.array([msg.histograms[i].histogram for i in range(9)])
-        max_val = np.max(hists)
 
         argmaxes = np.argmax(hists, axis=1)
 
@@ -98,6 +104,10 @@ class ToFVisualizerNode(Node, QMainWindow):
 
 
 def main(args=None):
+    """
+    This unusual main function is necessary to run the PyQt6 GUI and ROS 2 node in the same file.
+    https://stackoverflow.com/a/78539454/8841061
+    """
     app = QtWidgets.QApplication([])
     rclpy.init()
     ui = ToFVisualizerNode()
