@@ -1,0 +1,1 @@
+3x3 "Normal Mode" SPAD map (spad_map_id = 1). KILO_ITERS = 4000, PERIOD = 230
