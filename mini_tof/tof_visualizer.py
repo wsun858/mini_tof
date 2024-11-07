@@ -1,129 +1,121 @@
-import rclpy
-from rclpy.node import Node
+import time
 
-import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import CubicSpline
+import numpy as np
+import pyqtgraph as pg
+import rclpy
+from PyQt6 import QtCore, QtWidgets
+from PyQt6.QtWidgets import QMainWindow
+from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
 
 from mini_tof_interfaces.msg import ToFFrame
 
-class TMF882XVis(Node):
+
+class ToFVisualizerNode(Node, QMainWindow):
+    """
+    This class needs to inherit from both Node and QtWidgets.QMainWindow, so it can have the update
+    loops for both. See example: https://stackoverflow.com/a/78539454/8841061
+
+    I'm not sure exactly why, but the order of Node, QMainWindow in the above line matters. Maybe
+    this has to do with NRO (https://stackoverflow.com/q/3277367/8841061).
+    """
+
     def __init__(self):
-        super().__init__('tmf882x_vis')
+        QMainWindow.__init__(self)
+        Node.__init__(self, "tof_visualizer_node")
 
-        self.DIST_TO_BIN_SLOPE = 73.484
-        self.DIST_TO_BIN_INTERCEPT = 13.2521
-        # for plotting - the histogram in index 1 is in the top left, 4 is in the top middle, etc.
-        # as if you're reading a book, so the zones look like this:
-        # 2 1 0
-        # 5 4 3
-        # 8 7 6
-        # This arrangement gives you something like a camera would, the view as you're looking
-        # *through* the sensor lines up with what's plotted.
-        self.ZONE_ORDER = [2, 1, 0, 5, 4, 3, 8, 7, 6] # bottom row is 8, 7, 6
+        """
+        for plotting - the histogram in index 1 is in the top left, 4 is in the top middle, etc.
+        as if you're reading a book, so the zones look like this:
+        2 1 0
+        5 4 3
+        8 7 6
+        This arrangement gives you something like a camera would, the view as you're looking
+        *through* the sensor lines up with what's plotted.
+        """
+        # fmt: off
+        self.ZONE_ORDER = [
+            2, 1, 0,
+            5, 4, 3,
+            8, 7, 6
+        ]  # bottom row in view is idx 8, 7, 6 from sensor
+        # fmt: on
 
-        self.subscriber = self.create_subscription(ToFFrame, 'tmf882x', self.sub_callback, 1)
+        self.subscriber = self.create_subscription(ToFFrame, "tmf882x", self.sub_callback, 1)
 
-        self.hist_fig, self.hist_ax = plt.subplots(3, 3)
-        self.hist_fig.set_size_inches(10, 10)
-        self.hist_fig.suptitle("Captured Histograms")
-        self.hist_fig.tight_layout()
+        self.num_zones = 9
 
-        self.dist_fig, self.dist_ax = plt.subplots(3, 3)
-        self.dist_fig.set_size_inches(4, 4)
-        self.dist_fig.suptitle("Internally Computed Distances (mm)")
-        self.dist_fig.subplots_adjust(wspace=0, hspace=0, bottom=0, left=0, right=1)
+        self.central_widget = QtWidgets.QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.grid_layout = QtWidgets.QGridLayout(self.central_widget)
 
-        self.argmax_fig, self.argmax_ax = plt.subplots(3, 3)
-        self.argmax_fig.set_size_inches(4, 4)
-        self.argmax_fig.suptitle("Argmax of Histograms")
-        self.argmax_fig.subplots_adjust(wspace=0, hspace=0, bottom=0, left=0, right=1)
+        self.plot_widgets = []
+        self.lines = []
 
-        self.interp_argmax_fig, self.interp_argmax_ax = plt.subplots(3, 3)
-        self.interp_argmax_fig.set_size_inches(4, 4)
-        self.interp_argmax_fig.suptitle("Interpolated Argmax of Histograms")
-        self.interp_argmax_fig.subplots_adjust(wspace=0, hspace=0, bottom=0, left=0, right=1)
+        grid_size = int(np.ceil(np.sqrt(self.num_zones)))
+        pen = pg.mkPen(color=(255, 255, 255))
 
-        plt.ion()
-        plt.show(block=False)
+        for i in range(self.num_zones):
+            plot_widget = pg.PlotWidget()
+            plot_widget.setBackground("k")
+            self.plot_widgets.append(plot_widget)
+            self.lines.append(plot_widget.plot([], [], pen=pen))
+            row = i // grid_size
+            col = i % grid_size
+            self.grid_layout.addWidget(plot_widget, row, col)
+
+        # Add the image plot to the right of the 4x4 grid
+        self.image_plot_widget = pg.PlotWidget()
+        self.image_plot_widget.setBackground("k")
+        self.image_item = pg.ImageItem()
+        self.image_plot_widget.addItem(self.image_item)
+        self.grid_layout.addWidget(
+            self.image_plot_widget,  # widget to add
+            1,  # row (0-indexed)
+            grid_size,  # column (0-indexed)
+            2,  # row span
+            2,  # column span
+        )
+
+        # Set column stretch factors
+        for col in range(grid_size):
+            self.grid_layout.setColumnStretch(col, 1)
+        self.grid_layout.setColumnStretch(grid_size, 3)  # Make the image column wider
 
     def sub_callback(self, msg):
         hists = np.array([msg.histograms[i].histogram for i in range(9)])
         max_val = np.max(hists)
 
         argmaxes = np.argmax(hists, axis=1)
-        argmax_dists = ((argmaxes-self.DIST_TO_BIN_INTERCEPT)/self.DIST_TO_BIN_SLOPE)*1000
-        argmax_dists = np.clip(argmax_dists, 0, None)
 
-        # calculate interpolated argmax distances
-        interp_argmax_dists = []
-        for i in range(9):
-            cubic_hist = CubicSpline(np.arange(128), hists[i,:])
-            interpolated_hist = cubic_hist(np.arange(0, 128, 0.01))
-            peak_bin = interpolated_hist.argmax()/100
-            dist = (peak_bin-self.DIST_TO_BIN_INTERCEPT)/self.DIST_TO_BIN_SLOPE*1000
-            interp_argmax_dists.append(np.clip(dist, 0, None))
-        
-        hist_idx = 0
-        for row in range(3):
-            for col in range(3):
-                self.hist_ax[row][col].cla()
-                self.hist_ax[row][col].plot(hists[self.ZONE_ORDER[hist_idx]])
-                # self.hist_ax[row][col].set_ylim([0, max_val])
-                self.hist_ax[row][col].set_xticks([])
+        for i, zone in enumerate(self.ZONE_ORDER):
+            hist = hists[zone]
 
-                self.display_distances(
-                    self.dist_ax[row][col],
-                    msg.depth_estimates[0].depth_estimates[self.ZONE_ORDER[hist_idx]],
-                    max_dist=1600
-                )
+            self.lines[i].setData(hist)
 
-                self.display_distances(
-                    self.argmax_ax[row][col],
-                    argmax_dists[self.ZONE_ORDER[hist_idx]],
-                    max_dist=1600
-                )
-
-                self.display_distances(
-                    self.interp_argmax_ax[row][col],
-                    interp_argmax_dists[self.ZONE_ORDER[hist_idx]],
-                    max_dist=1600
-                )
-
-                hist_idx += 1
-
-        plt.pause(0.05)
-
-    def display_distances(self, ax, dist, max_dist):
-        ax.cla()
-        ax.axis('off')
-        shade = 1-(dist / max_dist)
-        if shade < 0:
-            self.get_logger().warn(f"Observed distance ({dist}) is greater than max distance used for visualization ({max_dist})")
-            shade = 0
-        ax.text(
-            0.5,
-            0.5,
-            f"{dist:.0f}",
-            color='white' if shade < 0.5 else 'black',
-            fontsize=12,
-            verticalalignment='center',
-            horizontalalignment='center',
-        )
-        ax.fill(
-            [0, 0, 1, 1],
-            [0, 1, 1, 0],
-            str(shade)
-        )
+        self.image_item.setImage(argmaxes[self.ZONE_ORDER].reshape(3, 3), levels=(0, 128))
 
 
 def main(args=None):
-    rclpy.init(args=args)
-    tmf882x_vis = TMF882XVis()
-    rclpy.spin(tmf882x_vis)
+    app = QtWidgets.QApplication([])
+    rclpy.init()
+    ui = ToFVisualizerNode()
+    app.processEvents()
+    ui.show()
 
-    tmf882x_vis.destroy_node()
-    rclpy.shutdown()
+    exec = MultiThreadedExecutor()
+    exec.add_node(ui)
+    while rclpy.ok():
+        try:
+            exec.wait_for_ready_callbacks(0)
+            exec.spin_once()
+        except:
+            pass
+        app.processEvents()
+    app.quit()
+    exec.remove_node(ui)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
