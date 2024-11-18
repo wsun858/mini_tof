@@ -13,6 +13,7 @@
 
   <exec_depend>python3-serial</exec_depend>
   <exec_depend>python3-pyqtgraph</exec_depend>
+  <!-- Also requires pyqt6 but that's not in rosdep and it's installed automatically by pyqtgraph -->
 
   <export>
     <build_type>ament_python</build_type>
