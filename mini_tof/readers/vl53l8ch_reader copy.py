@@ -5,32 +5,8 @@ import struct
 import numpy as np
 
 #Dont do distances from VL sensor
-# Return dists as empty, VL sensor does not compute distance
-# Eventually setup launch file
 
-"""
-            if len(d) == 78 and d[0] == "#Obj":
-                result = {}
-                result["I2C_address"] = None
-                result["measurement_num"] = int(d[2])
-                result["temperature"] = None
-                result["num_valid_results"] = int(d[4])
-                result["tick"] = int(d[5])
-                result["depths_1"] = [
-                    int(x) for x in [d[6], d[8], d[10], d[12], d[14], d[16], d[18], d[20], d[22]]
-                ]
-                result["confs_1"] = [
-                    int(x) for x in [d[7], d[9], d[11], d[13], d[15], d[17], d[19], d[21], d[23]]
-                ]
-                # 18 that go in between here are unused, at least in 3x3 mode
-                result["depths_2"] = [
-                    int(x) for x in [d[42], d[44], d[46], d[48], d[50], d[52], d[54], d[56], d[58]]
-                ]
-                result["confs_2"] = [
-                    int(x) for x in [d[43], d[45], d[47], d[49], d[51], d[53], d[55], d[57], d[59]]
-                ]
 
-"""
 
 class VL53L8CHReader:
     def __init__(self, port):
@@ -61,7 +37,7 @@ class VL53L8CHReader:
         # zone idx 0
         expected_zone_idx = 0
         while expected_zone_idx < self.num_zones:
-            zone_idx, zone_data, _ = VL53L8CHReader.readline_and_decode(self.ser)
+            zone_idx, zone_data, length = VL53L8CHReader.readline_and_decode(self.ser)
 
             if zone_idx != expected_zone_idx:
                 if self.verbose:
@@ -80,28 +56,24 @@ class VL53L8CHReader:
             expected_zone_idx += 1
 
         if valid_frame:
-            # self.frame_idx += 1
-            ## Will not need frame rate
-            # frame_rate = self.frame_idx / (time.time() - self.start_time)
-            # print(
-            #     f"Skipped frames: {self.num_skipped_frames} / {self.frame_idx} ({(self.num_skipped_frames / (self.num_skipped_frames + self.frame_idx)) * 100:.2f}%)"
-            # )
-            # print(f"Frame rate: {frame_rate:.2f} fps")
+            self.frame_idx += 1
+            frame_rate = self.frame_idx / (time.time() - self.start_time)
+            print(
+                f"Skipped frames: {self.num_skipped_frames} / {self.frame_idx} ({(self.num_skipped_frames / (self.num_skipped_frames + self.frame_idx)) * 100:.2f}%)"
+            )
+            print(f"Frame rate: {frame_rate:.2f} fps")
 
-            # if not self.depth_img_only:
-            #     # update line plot data
-            #     for zone_idx in frame_data.keys():
-            #         self.lines[zone_idx].setData(frame_data[zone_idx])
+            if not self.depth_img_only:
+                # update line plot data
+                for zone_idx in frame_data.keys():
+                    self.lines[zone_idx].setData(frame_data[zone_idx])
 
             # update image plot data
-            # depth_img = VL53L8CHReader.frame_to_depth_img(frame_data)
+            depth_img = VL53L8CHReader.frame_to_depth_img(frame_data)
             # depth img just gives the bin index for each pixel, so we can set the min vis value 
             # to 0 and the max to the number of bins
             # self.image_item.setImage(depth_img, levels=(0, len(frame_data[0])))
-            # # Adding another array around frame_data because of Tofpublisher
 
-            return frame_data, time.time()
-        return None
     @classmethod
     def readline_and_decode(ser):
         """
@@ -129,3 +101,31 @@ class VL53L8CHReader:
         # line_as_floats[-1] is always NaN, so remove it
         # TODO figure out why this is and if we're missing out on data by doing this
         return int(line_as_floats[0]), line_as_floats[1:-1], length
+    
+    @classmethod
+    def frame_to_depth_img(frame):
+        """
+        Convert a frame of data from the sensor to a depth image (numpy array).
+
+        Args:
+            frame (dict): Dictionary where keys are zone indices and values are lists of floats
+                representing the histogram values
+
+        Returns:
+            numpy.ndarray: Depth image where each pixel is the argmax of each histogram
+        """
+
+        num_zones = len(frame)
+
+        if not np.sqrt(num_zones).is_integer():
+            raise ValueError("Number of zones must be a perfect square")
+
+        depth_img = np.zeros(num_zones)
+
+        for zone_idx, zone_data in frame.items():
+            depth_img[zone_idx] = np.argmax(zone_data)
+
+        depth_img = depth_img.reshape(int(np.sqrt(num_zones)), int(np.sqrt(num_zones)))
+
+        return depth_img
+
