@@ -52,6 +52,7 @@ class VL53L8CHReader:
         self.start_time = time.time()
         self.frame_idx = 0
         self.num_skipped_frames = 0
+        self.num_zones = 64
 
     def get_measurement(self):
         frame_data = {}
@@ -61,13 +62,14 @@ class VL53L8CHReader:
         # zone idx 0
         expected_zone_idx = 0
         while expected_zone_idx < self.num_zones:
+            # print(self.ser)
             zone_idx, zone_data, _ = VL53L8CHReader.readline_and_decode(self.ser)
 
             if zone_idx != expected_zone_idx:
-                if self.verbose:
-                    print(
-                        f"Warning: Expected zone {expected_zone_idx} but received zone {zone_idx}"
-                    )
+                # if self.verbose:
+                #     print(
+                #         f"Warning: Expected zone {expected_zone_idx} but received zone {zone_idx}"
+                #     )
                 valid_frame = False
                 # only add to the number of skipped frames if the expected zone idx is not zero.
                 # if the expected zone idx is zero, most likely the previous line was also skipped,
@@ -93,17 +95,20 @@ class VL53L8CHReader:
             #     for zone_idx in frame_data.keys():
             #         self.lines[zone_idx].setData(frame_data[zone_idx])
 
-            # update image plot data
+            # update image plot data  
             # depth_img = VL53L8CHReader.frame_to_depth_img(frame_data)
             # depth img just gives the bin index for each pixel, so we can set the min vis value 
             # to 0 and the max to the number of bins
             # self.image_item.setImage(depth_img, levels=(0, len(frame_data[0])))
             # # Adding another array around frame_data because of Tofpublisher
 
+            # Turn dictionary into lists of list
+            # TODO: DOuble check that order is preserved
+            frame_data = [frame_data[zone_idx] for zone_idx in sorted(frame_data.keys())]
             return frame_data, time.time()
         return None
     @classmethod
-    def readline_and_decode(ser):
+    def readline_and_decode(cls, ser):
         """
         Given a serial port object denoting a port connected to an MCU with a VL3L8CH connected,
         read a line of data from the port and decode it
@@ -118,7 +123,7 @@ class VL53L8CHReader:
         """
 
         eol = b"\xFF\xFF\xFF\xFF"
-
+        # print(f"TYPE = {type(ser)}")
         c = ser.read_until(expected=eol)
         byte_listing = bytearray(c)
         length = len(byte_listing) - len(byte_listing) % 4

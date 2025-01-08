@@ -23,7 +23,8 @@ class ToFPublisher(Node):
     def __init__(self):
         super().__init__("tof_publisher")
         # Rudimentary sensor selector
-        self.sensor = "TMF8820"
+        # self.sensor = "TMF8820"
+        self.sensor = "VL53L8CH"
         # Add parameter for sensor selection
 
         # ROS parameter for the Arduino port. Defaults to /dev/ttyACM0
@@ -54,9 +55,8 @@ class ToFPublisher(Node):
         if not self.received_data:
             self.get_logger().info("Received data from MCU")
             self.received_data = True
-        if self.sensor[0] == "TMF8820":
+        if self.sensor == "TMF8820":
             hists, dists, timestamp = m
-
             message = ToFFrame()
             message.i2c_address = dists[0]["I2C_address"]
             message.tick = dists[0]["tick"]
@@ -71,8 +71,9 @@ class ToFPublisher(Node):
             if hists[0]:  # if hists is not an empty list (histograms are being reported)
                 message.histograms = [ToFHistogram(histogram=hist) for hist in hists[0][1:]]
                 message.reference_histogram = ToFHistogram(histogram=hists[0][0])
-        else:
+        elif self.sensor == "VL53L8CH":
             hists, timestamp = m
+            message = ToFFrame()
             # message.i2c_address = None
             # message.reference_histogram = None
             # message.tick = dists[0]["tick"]
@@ -84,6 +85,7 @@ class ToFPublisher(Node):
             #     DepthEstimate(depth_estimates=dists[0]["depths_2"], confidences=dists[0]["confs_2"]),
             # ]
             message.serial_port = self.mcu_port
+            print(hists)
             if hists[0]:  # if hists is not an empty list (histograms are being reported)
                 message.histograms = [ToFHistogram(histogram=hist) for hist in hists]
                 # message.reference_histogram = ToFHistogram(histogram=hists[0][0])
