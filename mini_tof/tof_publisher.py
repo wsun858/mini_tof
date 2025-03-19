@@ -3,9 +3,10 @@ This ROS 2 node connects to a microcontroller via a serial USB connection, and p
 data to the mini_tof_data topic.
 
 Example of launching this node with ROS 2 parameters:
-ros2 run mini_tof tof_publisher --ros-args -p mcu_port:=/dev/ttyACM0
+ros2 run mini_tof tof_publisher --ros-args -p mcu_port:=/dev/ttyACM0 -p sensor_model:=TMF882X
 
 ROS 2 parameters:
+- sensor_model: The model of the ToF sensor. Required. Supported models are: TMF882X, VL53L8CH.
 - mcu_port: The port to which the microcontroller is connected. Defaults to /dev/ttyACM0.
 
 ROS 2 publications:

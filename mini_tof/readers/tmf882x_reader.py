@@ -1,3 +1,8 @@
+"""
+Class which enables reading and decoding data from a TMF882X ToF sensor connected to a
+microcontroller via USB serial.
+"""
+
 import time
 
 import serial
@@ -12,10 +17,30 @@ TMF882X_IDX_FIELD = 2  # second item in each row contains the idx field
 
 class TMF882XReader:
     def __init__(self, port):
-        self.arduino = serial.Serial(port=port, baudrate=1000000, timeout=0.1)
+        self.mcu = serial.Serial(port=port, baudrate=1000000, timeout=0.1)
         time.sleep(2)
 
     def get_measurement(self, output=None, flush_input=False, buffer_warnings=True):
+        """
+        Get a single measurement from the TMF882X sensor.
+
+        Args:
+            output (dict, optional): If provided, the measurement will be stored in this dictionary
+                with the key being the port of the microcontroller. This is useful for
+                multithreaded applications.
+            flush_input (bool, optional): If True, flush the input buffer before starting to read.
+                This is useful if you want to guarantee you're getting a fresh measurement, but
+                is not necessary when get_measurement is being called repeatedly, as the input
+                will naturally be flushed.
+            buffer_warnings (bool, optional): If True, print warnings when the buffer is not as
+                expected.
+
+        Returns:
+            tuple: A tuple containing:
+                - all_processed_hists: A list of processed histograms.
+                - all_processed_dists: A list of processed distance measurements.
+                - timestamp: The timestamp of the measurement.
+        """
         buffer = []
         frames_finished = 0
 
@@ -23,13 +48,13 @@ class TMF882XReader:
         all_processed_dists = []
 
         if flush_input:
-            self.arduino.reset_input_buffer()
+            self.mcu.reset_input_buffer()
             # because we might be starting in the middle of a measurement, we will throw out the
             # first few finished frames (number decided by trial and error)
             frames_finished = -3
 
         while frames_finished < 1:
-            line = self.arduino.readline().rstrip()
+            line = self.mcu.readline().rstrip()
             buffer.append(line)
             try:
                 decoded_line = line.decode("utf-8").rstrip().split(",")
@@ -62,7 +87,7 @@ class TMF882XReader:
                 buffer = []
 
         if output is not None:
-            output[self.arduino.port] = {
+            output[self.mcu.port] = {
                 "hists": all_processed_hists,
                 "dists": all_processed_dists,
                 "timestamp": timestamp,
@@ -72,7 +97,16 @@ class TMF882XReader:
 
     def measurement_to_ros_msg(self, m, mcu_port, sensor_model):
         """
-        Convert a measurement as returned by get_measurement() into a ROS message.
+        Convert a measurement as returned by get_measurement() into a
+        mini_tof_interfaces.msg.ToFFrame ROS message.
+
+        Args:
+            m (tuple): The measurement returned by get_measurement().
+            mcu_port (str): The port of the microcontroller.
+            sensor_model (str): The model of the sensor.
+        
+        Returns:
+            ToFFrame: A ROS message containing the processed measurement data.
         """
         hists, dists, timestamp = m
 
