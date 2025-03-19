@@ -14,9 +14,12 @@ ROS 2 publications:
 
 import rclpy
 from rclpy.node import Node
-from readers.tmf8820_reader import TMF8820Reader
+from mini_tof.readers.tmf882x_reader import TMF882XReader
+from mini_tof.readers.vl53l8ch_reader import VL53L8CHReader
 
-from mini_tof_interfaces.msg import ToFHistogram, ToFFrame, DepthEstimate
+from mini_tof_interfaces.msg import ToFFrame
+
+SUPPORTED_SENSOR_MODELS = ["TMF882X", "VL53L8CH"]
 
 
 class ToFPublisher(Node):
@@ -26,14 +29,28 @@ class ToFPublisher(Node):
         # ROS parameter for the Arduino port. Defaults to /dev/ttyACM0
         self.declare_parameter("mcu_port", rclpy.Parameter.Type.STRING)
 
+        # ROS parameter for the sensor model. Required.
+        self.declare_parameter("sensor_model", rclpy.Parameter.Type.STRING)
+        self.sensor_model = self.get_parameter("sensor_model").value
+        if self.sensor_model is None:
+            raise ValueError("Parameter 'sensor_model' must be provided")
+        if self.sensor_model not in SUPPORTED_SENSOR_MODELS:
+            raise ValueError(
+                f"Unsupported sensor model '{self.sensor_model}'. Supported models are: {SUPPORTED_SENSOR_MODELS}"
+            )
+
         try:
             self.mcu_port = self.get_parameter("mcu_port").value
             self.get_logger().info(f"Using provided Arduino port {self.mcu_port}")
         except:
             self.mcu_port = "/dev/ttyACM0"
+            # TODO auto-detect platform (windows, mac, linux) and set default port accordingly
             self.get_logger().info(f"No Arduino port provided, using default {self.mcu_port}")
 
-        self.reader = TMF8820Reader(self.mcu_port)
+        if self.sensor_model == "TMF882X":
+            self.reader = TMF882XReader(self.mcu_port)
+        elif self.sensor_model == "VL53L8CH":
+            self.reader = VL53L8CHReader(self.mcu_port)
 
         self.publisher = self.create_publisher(ToFFrame, "mini_tof_data", 1)
 
@@ -45,25 +62,10 @@ class ToFPublisher(Node):
         m = self.reader.get_measurement()
         if m is None:
             return
-        hists, dists, timestamp = m
+        message = self.reader.measurement_to_ros_msg(m, self.mcu_port, self.sensor_model)
         if not self.received_data:
             self.get_logger().info("Received data from MCU")
             self.received_data = True
-
-        message = ToFFrame()
-        message.i2c_address = dists[0]["I2C_address"]
-        message.tick = dists[0]["tick"]
-        message.num_valid_results = dists[0]["num_valid_results"]
-        message.temperature = dists[0]["temperature"]
-        message.measurement_num = dists[0]["measurement_num"]
-        message.depth_estimates = [
-            DepthEstimate(depth_estimates=dists[0]["depths_1"], confidences=dists[0]["confs_1"]),
-            DepthEstimate(depth_estimates=dists[0]["depths_2"], confidences=dists[0]["confs_2"]),
-        ]
-        message.serial_port = self.mcu_port
-        if hists[0]:  # if hists is not an empty list (histograms are being reported)
-            message.histograms = [ToFHistogram(histogram=hist) for hist in hists[0][1:]]
-            message.reference_histogram = ToFHistogram(histogram=hists[0][0])
 
         self.publisher.publish(message)
 

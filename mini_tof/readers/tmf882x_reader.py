@@ -2,13 +2,15 @@ import time
 
 import serial
 
+from mini_tof_interfaces.msg import DepthEstimate, ToFFrame, ToFHistogram
+
 TMF882X_CHANNELS = 10
 TMF882X_BINS = 128
 TMF882X_SKIP_FIELDS = 3  # skip first 3 items in each row
 TMF882X_IDX_FIELD = 2  # second item in each row contains the idx field
 
 
-class TMF8820Reader:
+class TMF882XReader:
     def __init__(self, port):
         self.arduino = serial.Serial(port=port, baudrate=1000000, timeout=0.1)
         time.sleep(2)
@@ -43,10 +45,10 @@ class TMF8820Reader:
                     if frames_finished < 0:
                         frames_finished += 1
                     else:  # if we're through flushing the first frames, process the input
-                        processed_hists = TMF8820Reader.process_raw_hists(
+                        processed_hists = TMF882XReader.process_raw_hists(
                             buffer, buffer_warnings=buffer_warnings
                         )
-                        processed_dists = TMF8820Reader.process_raw_dist(buffer)
+                        processed_dists = TMF882XReader.process_raw_dist(buffer)
                         if processed_hists is not None and processed_dists is not None:
                             all_processed_hists.append(processed_hists)
                             all_processed_dists.append(processed_dists)
@@ -67,6 +69,30 @@ class TMF8820Reader:
             }
 
         return all_processed_hists, all_processed_dists, timestamp
+
+    def measurement_to_ros_msg(self, m, mcu_port, sensor_model):
+        """
+        Convert a measurement as returned by get_measurement() into a ROS message.
+        """
+        hists, dists, timestamp = m
+
+        message = ToFFrame()
+        message.i2c_address = dists[0]["I2C_address"]
+        message.tick = dists[0]["tick"]
+        message.num_valid_results = dists[0]["num_valid_results"]
+        message.temperature = dists[0]["temperature"]
+        message.measurement_num = dists[0]["measurement_num"]
+        message.depth_estimates = [
+            DepthEstimate(depth_estimates=dists[0]["depths_1"], confidences=dists[0]["confs_1"]),
+            DepthEstimate(depth_estimates=dists[0]["depths_2"], confidences=dists[0]["confs_2"]),
+        ]
+        message.serial_port = mcu_port
+        message.sensor_model = sensor_model
+        if hists[0]:  # if hists is not an empty list (histograms are being reported)
+            message.histograms = [ToFHistogram(histogram=hist) for hist in hists[0][1:]]
+            message.reference_histogram = ToFHistogram(histogram=hists[0][0])
+
+        return message
 
     @classmethod
     def process_raw_hists(cls, buffer, buffer_warnings=True):
@@ -127,7 +153,9 @@ class TMF8820Reader:
                         raw_sum[idx][hist_bin] += int(row[TMF882X_SKIP_FIELDS + hist_bin])
                 elif idx >= 10 and idx <= 19:
                     for hist_bin in range(skipped_bins, len(row) - TMF882X_SKIP_FIELDS):
-                        raw_sum[idx - 10][hist_bin] += int(row[TMF882X_SKIP_FIELDS + hist_bin]) * 256
+                        raw_sum[idx - 10][hist_bin] += (
+                            int(row[TMF882X_SKIP_FIELDS + hist_bin]) * 256
+                        )
                 elif idx >= 20 and idx <= 29:
                     for hist_bin in range(skipped_bins, len(row) - TMF882X_SKIP_FIELDS):
                         raw_sum[idx - 20][hist_bin] += (
