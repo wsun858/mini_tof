@@ -1,15 +1,17 @@
 # Mini ToF
 
-ROS 2 package for interfacing with miniature ToF sensors without any hardware or firmware expertise required. Unlike existing packages, this package includes support for capturing raw histogram data from the sensors, which has been studied in academic work for many applications like object detection [[1](https://cpsiff.github.io/papers/using_a_distance_sensor/index.html)], 3D reconstruction[[2](https://cpsiff.github.io/papers/towards_3d_vision/index.html), [3](https://cpsiff.github.io/papers/unlocking_proximity_sensors/index.html), [4](https://nikhilbehari.github.io/bls3d-web/)], and even seeing around corners[[5](https://zheng-shi.github.io/papers/CheapSPAD_main.pdf), [6](https://camera-culture.github.io/nlos-aided-autonomous-navigation/)].
+ROS 2 package for interfacing with miniature ToF sensors without any hardware or firmware expertise required. This package includes support for capturing raw histogram data from the sensors, which has been studied in academic work for many applications like object detection [[1](https://cpsiff.github.io/papers/using_a_distance_sensor/index.html)], 3D reconstruction[[2](https://cpsiff.github.io/papers/towards_3d_vision/index.html), [3](https://cpsiff.github.io/papers/unlocking_proximity_sensors/index.html), [4](https://nikhilbehari.github.io/bls3d-web/)], and even seeing around corners[[5](https://zheng-shi.github.io/papers/CheapSPAD_main.pdf), [6](https://camera-culture.github.io/nlos-aided-autonomous-navigation/)].
 
 Currently supported sensors:
-* AMS TMF882X (TMF8820, TMF8825, TMF8828)
+* AMS TMF882X (TMF8820, TMF8821, TMF8828)
 * ST VL53L8CH
 
 See the [mini_tof_firmware](https://github.com/uwgraphics/mini_tof_firmware) repository for information about supported hardware (sensors and microcontollers).
 
 **Related Packages**
+
 [mini_tof_interfaces](https://github.com/uwgraphics/mini_tof_interfaces) is a ROS 2 package containing the ROS 2 interface definitions for this package.
+
 [mini_tof_firmware](https://github.com/uwgraphics/mini_tof_firmware) is a GitHub repository containing microcontroller firmware necessary for using this package.
 
 ## Installation
