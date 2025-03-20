@@ -10,11 +10,8 @@ import serial
 
 from mini_tof_interfaces.msg import DepthEstimate, ToFFrame, ToFHistogram
 
-# TODO support changing the number of zones without modifying source code
-NUM_ZONES = 16
-
 class VL53L8CHReader:
-    def __init__(self, port):
+    def __init__(self, port, num_zones):
         self.mcu = serial.Serial(
             port,
             921600,
@@ -27,20 +24,21 @@ class VL53L8CHReader:
         )
         time.sleep(2)
 
+        self.num_zones = num_zones
+        # the sensor only supports 16 or 64 zones
+        if not self.num_zones in [16, 64]:
+            print(f"VL53L8CH sensor only supports 16 or 64 zones ({self.num_zones} provided)")
+            return
+
     def get_measurement(self):
         self.mcu.reset_input_buffer()
-
-        # the sensor only supports 16 or 64 zones
-        if not NUM_ZONES in [16, 64]:
-            print(f"VL53L8CH sensor only supports 16 or 64 zones ({NUM_ZONES} provided)")
-            return
 
         frame_data = []
         valid_frame = True
         expected_zone_idx = 0
 
         # Read data for all zones in the frame.
-        while expected_zone_idx < NUM_ZONES:
+        while expected_zone_idx < self.num_zones:
             zone_idx, zone_data, _ = VL53L8CHReader.readline_and_decode(self.mcu)
             if zone_idx != expected_zone_idx:
                 # print(f"Warning: Expected zone {expected_zone_idx} but received zone {zone_idx}")
