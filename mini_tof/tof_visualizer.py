@@ -13,6 +13,7 @@ from PyQt6 import QtWidgets
 from PyQt6.QtWidgets import QMainWindow
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.wait_for_message import wait_for_message
 
 from mini_tof_interfaces.msg import ToFFrame
 
@@ -29,26 +30,19 @@ class ToFVisualizerNode(Node, QMainWindow):
         QMainWindow.__init__(self)
         Node.__init__(self, "tof_visualizer_node")
 
-        """
-        for plotting - the histogram in index 1 is in the top left, 4 is in the top middle, etc.
-        as if you're reading a book, so the zones look like this:
-        2 1 0
-        5 4 3
-        8 7 6
-        This arrangement gives you something like a camera would, the view as you're looking
-        *through* the sensor lines up with what's plotted.
-        """
-        # fmt: off
-        self.ZONE_ORDER = [
-            2, 1, 0,
-            5, 4, 3,
-            8, 7, 6
-        ]  # bottom row in view is idx 8, 7, 6 from sensor
-        # fmt: on
-
         self.subscriber = self.create_subscription(ToFFrame, "mini_tof_data", self.sub_callback, 1)
 
-        self.num_zones = 9
+        # get a single message to determine the number of zones and sensor model, which are used
+        # for setting up the plot. This must be done in the init function (not a callback) due to
+        # restrictions on making Qt widgets in a separate thread.
+        got_msg, msg = wait_for_message(ToFFrame, self, "mini_tof_data", time_to_wait=3.0)
+        if not got_msg:
+            self.get_logger().error("Did not receive data on mini_tof_data topic - is tof_publisher running?")
+            return
+        self.num_zones = len(msg.histograms)
+        self.sensor_model = msg.sensor_model
+        self.set_zone_order()  # set the zone order based on the sensor model and number of zones
+        self.get_logger().info(f"Detected {self.sensor_model} sensor, {self.num_zones} zones")
 
         self.central_widget = QtWidgets.QWidget()
         self.setCentralWidget(self.central_widget)
@@ -91,17 +85,50 @@ class ToFVisualizerNode(Node, QMainWindow):
         """
         Update plot with new sensor data.
         """
-        hists = np.array([msg.histograms[i].histogram for i in range(9)])
-
+        hists = np.array([msg.histograms[i].histogram for i in range(len(msg.histograms))])
+            
         argmaxes = np.argmax(hists, axis=1)
 
-        for i, zone in enumerate(self.ZONE_ORDER):
+        for i, zone in enumerate(self.zone_order):
             hist = hists[zone]
 
             self.lines[i].setData(hist)
 
-        self.image_item.setImage(argmaxes[self.ZONE_ORDER].reshape(3, 3), levels=(0, 128))
+        self.image_item.setImage(argmaxes[self.zone_order].reshape(3, 3), levels=(0, 128))
 
+    def set_zone_order(self):
+        """
+        Set the zone order used for plotting, which varies based on the sensor model and number
+        of zones
+        """
+
+        if self.sensor_model == "TMF882X" and self.num_zones == 9:
+            """
+            the histogram in index 1 is in the top left, 4 is in the top middle, etc.
+            as if you're reading a book, so the zones look like this:
+            2 1 0
+            5 4 3
+            8 7 6
+            This arrangement gives you something like a camera would, the view as you're looking
+            *through* the sensor lines up with what's plotted.
+            """
+            # fmt: off
+            self.zone_order = [
+                2, 1, 0,
+                5, 4, 3,
+                8, 7, 6
+            ]  # bottom row in view is idx 8, 7, 6 from sensor
+            # fmt: on
+
+        elif self.sensor_model == "VL53L8CH":
+            # don't re-arrange the zones from how they're reported
+            self.zone_order = list(range(self.num_zones))
+        else:
+            self.get_logger().warning(
+                f"Got unexpected combination of sensor model ({self.sensor_model}) and number of zones ({self.num_zones}). "
+                f"Defaulting to zone order of 0, 1, 2, ... {self.num_zones-1}"
+            )
+            self.zone_order = list(range(self.num_zones))
 
 def main(args=None):
     """
