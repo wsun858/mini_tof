@@ -8,7 +8,7 @@ import time
 
 import serial
 
-from mini_tof_interfaces.msg import DepthEstimate, ToFFrame, ToFHistogram
+from mini_tof_interfaces.msg import AmbientLight, DepthEstimate, ToFFrame, ToFHistogram
 
 class VL53L8CHReader:
 
@@ -41,6 +41,7 @@ class VL53L8CHReader:
         i = 0
         while i < 3: # 3 frames per shift
             frame_data = {}
+            frame_ambient_light = {}
         
             # We expect zone idx 0 to come first - if not, bad frame and throw it out until we see
             # zone idx 0
@@ -48,7 +49,7 @@ class VL53L8CHReader:
             while expected_zone_idx < self.num_zones:
                 try:
                     zone_idx, ambient_light, zone_data, _, distance_mm, range_sigma_mm, reading_counter, start_bin = (
-                        self.readline_and_decode(self.mcu)
+                        self.readline_and_decode()
                     )
                 except Exception as e:
                     print(f"(1) Notice, reading serial data: {e}")
@@ -59,6 +60,7 @@ class VL53L8CHReader:
                     started = True
 
                 frame_data[zone_idx] = zone_data
+                frame_ambient_light[zone_idx] = ambient_light
                 if zone_idx == 63 and expected_zone_idx != 63:
                     expected_zone_idx = 0
                 else:
@@ -72,7 +74,7 @@ class VL53L8CHReader:
                         concat_frame_data[zone_idx] = []
                         concat_ambient_light[zone_idx] = []
                     concat_frame_data[zone_idx].extend(zone_data)
-                    concat_ambient_light[zone_idx].append(ambient_light) # 1 per zone per reading (nx3 total)
+                    concat_ambient_light[zone_idx].append(frame_ambient_light[zone_idx]) # 1 per zone per reading (nx3 total)
         return concat_frame_data, concat_ambient_light, distance_mm, range_sigma_mm
 
     def measurement_to_ros_msg(self, m, mcu_port, sensor_model):
@@ -90,7 +92,7 @@ class VL53L8CHReader:
         """
         concat_frame_data, concat_ambient_light, distance_mm, range_sigma_mm = m
         message = ToFFrame()
-        message.ambient_light = concat_ambient_light  # ambient light for each zone
+        message.ambient_lights = [AmbientLight(ambient_lights=al) for al in concat_ambient_light]  # ambient light for each zone
         message.i2c_address = -1  # VL53L8CH does not use I2C address
         message.tick = -1 # VL53L8CH does not provide tick information
         message.num_valid_results = -1 # does not apply to VL53L8CH
@@ -106,13 +108,10 @@ class VL53L8CHReader:
 
         return message
 
-    def readline_and_decode(self, ser):
+    def readline_and_decode(self):
         """
         Given a serial port object denoting a port connected to an MCU with a VL3L8CH connected,
         read a line of data from the port and decode it
-
-        Args:
-            ser (serial.Serial): Serial port object
 
         Returns:
             int: Zone index
@@ -126,7 +125,7 @@ class VL53L8CHReader:
         reading_counter = None
         start_bin = None
 
-        c = self.ser.read_until(expected=eol)
+        c = self.mcu.read_until(expected=eol)
         byte_listing = bytearray(c)
         length = len(byte_listing) - len(byte_listing) % 4
         line_as_floats = [
@@ -145,7 +144,7 @@ class VL53L8CHReader:
 
         # grab ending metadata
         if zone_index == self.num_zones - 1:
-            c = self.ser.read_until(expected=eol)
+            c = self.mcu.read_until(expected=eol)
             byte_listing = bytearray(c)
             length2 = len(byte_listing) - len(byte_listing) % 4
             line_as_floats = [
