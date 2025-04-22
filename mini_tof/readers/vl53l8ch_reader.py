@@ -132,7 +132,7 @@ class VL53L8CHReader:
             struct.unpack("<f", bytes(byte_listing[i : i + 4]))[0] for i in range(0, length, 4)
         ]
 
-        # extract data, see MCU code for ordering, line_as_floats[-1] is always thrown away
+        # extract data, see MCU code for ordering, line_as_floats[-1] is always thrown out
         try:
             zone_index = int(line_as_floats[0])  # zone index
             ambient_light = line_as_floats[1]  # ambient light
