@@ -20,10 +20,11 @@ import rclpy
 from rclpy.node import Node
 
 from mini_tof.readers.tmf882x_reader import TMF882XReader
-from mini_tof.readers.vl53l8ch_reader import VL53L8CHReader
+from mini_tof.readers.tmf882x_distance_only_reader import TMF882XDistanceOnlyReader
+from mini_tof.readers.vl53l8ch_reader import VL53L8CHReader, VL53L8CHReaderNoAggregation
 from mini_tof_interfaces.msg import ToFFrame
 
-SUPPORTED_SENSOR_MODELS = ["TMF882X", "VL53L8CH"]
+SUPPORTED_SENSOR_MODELS = ["TMF882X", "TMF882X_DISTANCE_ONLY", "VL53L8CH"]
 
 
 class ToFPublisher(Node):
@@ -53,7 +54,7 @@ class ToFPublisher(Node):
             raise ValueError("Parameter 'num_zones' must be provided for VL53L8CH sensor")
         elif self.sensor_model == "VL53L8CH" and self.num_zones not in [16, 64]:
             raise ValueError("VL53L8CH sensor only supports 16 or 64 zones")
-        elif self.sensor_model == "TMF882X":
+        elif self.sensor_model == "TMF882X" or self.sensor_model == "TMF882X_DISTANCE_ONLY":
             self.num_zones = 9  # TMF882X always has 9 zones (with our firmware)
 
         try:
@@ -66,12 +67,14 @@ class ToFPublisher(Node):
 
         if self.sensor_model == "TMF882X":
             self.reader = TMF882XReader(self.mcu_port)
+        elif self.sensor_model == "TMF882X_DISTANCE_ONLY":
+            self.reader = TMF882XDistanceOnlyReader(self.mcu_port)
         elif self.sensor_model == "VL53L8CH":
-            self.reader = VL53L8CHReader(self.mcu_port, self.num_zones)
+            self.reader = VL53L8CHReaderNoAggregation(self.mcu_port, self.num_zones)
 
         self.publisher = self.create_publisher(ToFFrame, "mini_tof_data", 1)
 
-        self.timer = self.create_timer(0.005, self.timer_callback)
+        self.timer = self.create_timer(0.001, self.timer_callback)
 
         self.received_data = False
 
@@ -83,7 +86,20 @@ class ToFPublisher(Node):
         if not self.received_data:
             self.get_logger().info("Received data from MCU")
             self.received_data = True
+            # Initialize FPS tracking
+            self.frame_count = 0
+            self.last_time = self.get_clock().now()
 
+        # Update FPS calculation
+        self.frame_count += 1
+        current_time = self.get_clock().now()
+        elapsed = (current_time - self.last_time).nanoseconds / 1e9
+        if elapsed > 3.0:  # Print FPS every 3 seconds
+            fps = self.frame_count / elapsed
+            self.get_logger().info(f"FPS: {fps:.2f}")
+            self.frame_count = 0
+            self.last_time = current_time
+        
         self.publisher.publish(message)
 
 

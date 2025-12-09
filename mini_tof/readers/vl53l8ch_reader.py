@@ -183,7 +183,7 @@ class VL53L8CHReaderNoAggregation:
             print(f"VL53L8CH sensor only supports 16 or 64 zones ({self.num_zones} provided)")
             return
 
-    def capture(self):
+    def get_measurement(self):
         self.mcu.reset_input_buffer()
 
         frame_data = [None] * self.num_zones
@@ -202,10 +202,13 @@ class VL53L8CHReaderNoAggregation:
                 continue
 
             try:
-                frame_data[zone_idx] = zone_data
-                frame_ambient_light[zone_idx] = ambient_light
+                if zone_idx < self.num_zones:
+                    frame_data[zone_idx] = zone_data
+                    frame_ambient_light[zone_idx] = ambient_light
             except Exception as e:
-                pass
+                print(f"Error processing zone data: {e}")
+                continue
+
             if zone_idx == self.num_zones - 1 and expected_zone_idx != self.num_zones - 1:
                 expected_zone_idx = 0
             else:
@@ -225,20 +228,38 @@ class VL53L8CHReaderNoAggregation:
         Returns:
             ToFFrame: A ROS message containing the processed measurement data.
         """
-        concat_frame_data, concat_ambient_light, distance_mm, range_sigma_mm = m
+        frame_data, frame_ambient_light, distance_mm, range_sigma_mm = m
         message = ToFFrame()
-        message.ambient_lights = [AmbientLight(ambient_lights=al) for al in concat_ambient_light]  # ambient light for each zone
+        
         message.i2c_address = -1  # VL53L8CH does not use I2C address
         message.tick = -1 # VL53L8CH does not provide tick information
         message.num_valid_results = -1 # does not apply to VL53L8CH
         message.temperature = -1 # VL53L8CH does not provide temperature information
         message.measurement_num = -1 # VL53L8CH does not provide measurement number
-        message.depth_estimates = [
-            DepthEstimate(depth_estimates=distance_mm, confidences=range_sigma_mm),
-        ]
+
         message.serial_port = mcu_port
         message.sensor_model = sensor_model
-        message.histograms = [ToFHistogram(histogram=hist) for hist in concat_frame_data]
+
+        try:
+            message.ambient_lights = [AmbientLight(ambient_lights=[al]) for al in frame_ambient_light]  # ambient light for each zone
+        except Exception as e:
+            print(f"Error setting ambient_lights: {e}")
+            message.ambient_lights = []
+        
+        try:
+            message.depth_estimates = [
+            DepthEstimate(depth_estimates=distance_mm, confidences=range_sigma_mm),
+            ]
+        except Exception as e:
+            print(f"Error setting depth_estimates: {e}")
+            message.depth_estimates = []
+            
+        try:
+            message.histograms = [ToFHistogram(histogram=hist) for hist in frame_data if hist is not None]
+        except Exception as e:
+            print(f"Error setting histograms: {e}")
+            message.histograms = []
+            
         message.reference_histogram = ToFHistogram(histogram=[]) # VL53L8CH does not provide a reference histogram
 
         return message
